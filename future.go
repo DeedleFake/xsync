@@ -1,4 +1,4 @@
-package xsync
+package syncutil
 
 import "sync"
 

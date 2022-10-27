@@ -1,3 +1,3 @@
-module deedles.dev/xsync
+module deedles.dev/syncutil
 
 go 1.19
