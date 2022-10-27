@@ -27,8 +27,8 @@ func (f *Future[T]) Done() <-chan struct{} {
 	return f.done
 }
 
-// Get blocks until the future is completed and then returns its
-// value.
+// Get blocks, if necessary, until the future is completed and then
+// returns its value.
 func (f *Future[T]) Get() T {
 	<-f.done
 	return f.val
