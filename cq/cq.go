@@ -1,11 +1,11 @@
-// Package cq implements a simple concurrent queue.
+// Package cq implements simple concurrent queues.
 package cq
 
 import "sync"
 
-// Queue is a simple concurrent queue. It queues up values of type T
-// and yields a collection of them as a value of type Q.
-type Queue[T, Q any] struct {
+// A BulkQueue queues up values of type T and yields a collection of
+// them all at once as a value of type Q.
+type BulkQueue[T, Q any] struct {
 	done  chan struct{}
 	close sync.Once
 
@@ -16,14 +16,14 @@ type Queue[T, Q any] struct {
 
 // Simple creates a simple Queue that yields its values as a slice of
 // T.
-func Simple[T any]() *Queue[T, []T] {
+func Simple[T any]() *BulkQueue[T, []T] {
 	return New(func(q []T) []T { return q })
 }
 
 // New creates a Queue that converts queued up values into a Q by
 // calling collect.
-func New[T, Q any](collect func([]T) Q) *Queue[T, Q] {
-	q := Queue[T, Q]{
+func New[T, Q any](collect func([]T) Q) *BulkQueue[T, Q] {
+	q := BulkQueue[T, Q]{
 		done: make(chan struct{}),
 		add:  make(chan T),
 		get:  make(chan Q),
@@ -35,7 +35,7 @@ func New[T, Q any](collect func([]T) Q) *Queue[T, Q] {
 }
 
 // Stop stops the queue.
-func (q *Queue[T, Q]) Stop() {
+func (q *BulkQueue[T, Q]) Stop() {
 	q.close.Do(func() {
 		close(q.done)
 	})
@@ -43,7 +43,7 @@ func (q *Queue[T, Q]) Stop() {
 
 // Add returns a channel that enqueues values sent to it. This channel
 // must not be closed.
-func (q *Queue[T, Q]) Add() chan<- T {
+func (q *BulkQueue[T, Q]) Add() chan<- T {
 	return q.add
 }
 
@@ -56,11 +56,11 @@ func (q *Queue[T, Q]) Add() chan<- T {
 //	q.Add() <- 2
 //	q.Add() <- 3
 //	v = <-q.Get() // [2, 3]
-func (q *Queue[T, Q]) Get() <-chan Q {
+func (q *BulkQueue[T, Q]) Get() <-chan Q {
 	return q.get
 }
 
-func (q *Queue[T, Q]) run() {
+func (q *BulkQueue[T, Q]) run() {
 	defer func() {
 		close(q.get)
 	}()
