@@ -26,6 +26,7 @@ func (q *Queue[T]) init() {
 
 // Stop stops the queue.
 func (q *Queue[T]) Stop() {
+	q.init()
 	q.close.Do(func() {
 		close(q.done)
 	})
