@@ -16,7 +16,7 @@ import (
 //
 // A Queue is initialized by calling any of its methods, so a copy of
 // a Queue made before those methods are called is a completely
-// independant Queue, while a copy made afterwards is the same Queue.
+// independent Queue, while a copy made afterwards is the same Queue.
 type Queue[T any] struct {
 	start sync.Once
 	block *byte
@@ -36,9 +36,9 @@ func (q *Queue[T]) init() {
 		// SetFinalizer can only be called on the beginning of an
 		// allocated block. If a Queue value, not a pointer, is present as
 		// a field inside of another struct or in an array or something,
-		// it won't be the beggining of the block. By tying the finalizer
+		// it won't be the beginning of the block. By tying the finalizer
 		// to a field in the Queue that is allocated separately here, it
-		// guarantees that it'll work. THe field must be a type with a
+		// guarantees that it'll work. The field must be a type with a
 		// size because the runtime doesn't actually allocate zero-sized
 		// types, so this uses a byte instead of a struct{}.
 		q.block = new(byte)
