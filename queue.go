@@ -12,12 +12,14 @@ import (
 // reference to the Queue must be kept alive during its use or its
 // behavior will become undefined. Because of that, it is recommended
 // to access the Queue's channels via the methods every time instead
-// of storing a copy somewhere. For similar reasons, a Queue must not
-// be copied after its first use. Attempting to use a copied Queue
-// will result in a panic.
+// of storing a copy somewhere.
+//
+// A Queue is initialized by calling any of its methods, so a copy of
+// a Queue made before those methods are called is a completely
+// independant Queue, while a copy made afterwards is the same Queue.
 type Queue[T any] struct {
-	self  *Queue[T]
 	start sync.Once
+	block *byte
 
 	add chan T
 	get chan T
@@ -30,14 +32,18 @@ func (q *Queue[T]) init() {
 
 		done := make(chan struct{})
 		go q.run(done)
-		runtime.SetFinalizer(q, func(q *Queue[T]) { close(done) })
 
-		q.self = q
+		// SetFinalizer can only be called on the beginning of an
+		// allocated block. If a Queue value, not a pointer, is present as
+		// a field inside of another struct or in an array or something,
+		// it won't be the beggining of the block. By tying the finalizer
+		// to a field in the Queue that is allocated separately here, it
+		// guarantees that it'll work. THe field must be a type with a
+		// size because the runtime doesn't actually allocate zero-sized
+		// types, so this uses a byte instead of a struct{}.
+		q.block = new(byte)
+		runtime.SetFinalizer(q.block, func(*byte) { close(done) })
 	})
-
-	if q != q.self {
-		panic("Queue was copied after initialization")
-	}
 }
 
 // Add returns a channel that enqueues values sent to it. Closing this
