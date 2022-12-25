@@ -1,14 +1,23 @@
 package xsync
 
-import "sync"
+import (
+	"runtime"
+	"sync"
+)
 
 // A Queue concurrently collects values and returns them in FIFO
 // order. A zero value Queue is ready to use.
+//
+// A Queue is stopped when it is garbage collected. Therefore, a
+// reference to the Queue must be kept alive during its use or its
+// behavior will become undefined. Because of that, it is recommended
+// to access the Queue's channels via the methods every time instead
+// of storing a copy somewhere. For similar reasons, a Queue must not
+// be copied after its first use. Attempting to use a copied Queue
+// will result in a panic.
 type Queue[T any] struct {
+	self  *Queue[T]
 	start sync.Once
-
-	done  chan struct{}
-	close sync.Once
 
 	add chan T
 	get chan T
@@ -16,24 +25,25 @@ type Queue[T any] struct {
 
 func (q *Queue[T]) init() {
 	q.start.Do(func() {
-		q.done = make(chan struct{})
 		q.add = make(chan T)
 		q.get = make(chan T)
 
-		go q.run()
+		done := make(chan struct{})
+		go q.run(done)
+		runtime.SetFinalizer(q, func(q *Queue[T]) { close(done) })
+
+		q.self = q
 	})
+
+	if q != q.self {
+		panic("Queue was copied after initialization")
+	}
 }
 
-// Stop stops the queue.
-func (q *Queue[T]) Stop() {
-	q.init()
-	q.close.Do(func() {
-		close(q.done)
-	})
-}
-
-// Add returns a channel that enqueues values sent to it. This channel
-// must not be closed.
+// Add returns a channel that enqueues values sent to it. Closing this
+// channel will cause the channel returned by Get to be closed once
+// the Queue's contents are emptied, similar to how a regular channel
+// works.
 func (q *Queue[T]) Add() chan<- T {
 	q.init()
 	return q.add
@@ -47,26 +57,40 @@ func (q *Queue[T]) Get() <-chan T {
 	return q.get
 }
 
-func (q *Queue[T]) run() {
+func (q Queue[T]) run(done <-chan struct{}) {
+	add := q.add
+	var get chan T
+
 	defer func() {
 		close(q.get)
+		if add != nil {
+			// Ensure that future attempts to send to the queue will fail.
+			close(add)
+		}
 	}()
 
 	var s list[T]
-	var get chan T
-
 	for {
 		select {
-		case <-q.done:
+		case <-done:
 			return
 
-		case v := <-q.add:
+		case v, ok := <-add:
+			if !ok {
+				add = nil
+				continue
+			}
+
 			s.Enqueue(v)
 			get = q.get
 
 		case get <- s.Peek():
 			ok := s.Pop()
 			if !ok {
+				if add == nil {
+					return
+				}
+
 				get = nil
 			}
 		}
