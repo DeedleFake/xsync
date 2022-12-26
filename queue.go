@@ -64,19 +64,19 @@ func (q *Queue[T]) Stop() {
 	q.stop()
 }
 
-// Add returns a channel that enqueues values sent to it. Closing this
-// channel will cause the channel returned by Get to be closed once
-// the Queue's contents are emptied, similar to how a regular channel
-// works.
-func (q *Queue[T]) Add() chan<- T {
+// Push returns a channel that enqueues values sent to it. Closing
+// this channel will cause the channel returned by Pop to be closed
+// once the Queue's contents are emptied, similar to how a regular
+// channel works.
+func (q *Queue[T]) Push() chan<- T {
 	q.init()
 	return q.add
 }
 
-// Get returns a channel that yields values from the queue when they
+// Pop returns a channel that yields values from the queue when they
 // are available. The channel will be closed when the Queue is
 // stopped.
-func (q *Queue[T]) Get() <-chan T {
+func (q *Queue[T]) Pop() <-chan T {
 	q.init()
 	return q.get
 }
