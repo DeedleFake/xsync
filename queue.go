@@ -17,8 +17,17 @@ import (
 // A Queue is initialized by calling any of its methods, so a copy of
 // a Queue made before those methods are called is a completely
 // independent Queue, while a copy made afterwards is the same Queue.
+//
+// If a Queue's contents contain any references to the Queue itself,
+// it can cause garbage collection to fail. For example, given a
+// Queue[func()], if the Queue contains any closures which reference
+// the actual instance of the Queue, the Queue's finalizer will not
+// run until those elements have been removed from the Queue. Because
+// of this, such a Queue will need to be manually stopped with a call
+// to Queue.Stop.
 type Queue[T any] struct {
 	start sync.Once
+	stop  func()
 	block *byte
 
 	add chan T
@@ -31,6 +40,10 @@ func (q *Queue[T]) init() {
 		q.get = make(chan T)
 
 		done := make(chan struct{})
+		var stop sync.Once
+		stopfunc := func() { stop.Do(func() { close(done) }) }
+		q.stop = stopfunc
+
 		go q.run(done)
 
 		// SetFinalizer can only be called on the beginning of an
@@ -42,8 +55,13 @@ func (q *Queue[T]) init() {
 		// size because the runtime doesn't actually allocate zero-sized
 		// types, so this uses a byte instead of a struct{}.
 		q.block = new(byte)
-		runtime.SetFinalizer(q.block, func(*byte) { close(done) })
+		runtime.SetFinalizer(q.block, func(*byte) { stopfunc() })
 	})
+}
+
+func (q *Queue[T]) Stop() {
+	q.init()
+	q.stop()
 }
 
 // Add returns a channel that enqueues values sent to it. Closing this
