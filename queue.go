@@ -44,7 +44,11 @@ func (q *Queue[T]) init() {
 		stopfunc := func() { stop.Do(func() { close(done) }) }
 		q.stop = stopfunc
 
-		go q.run(done)
+		runner := queueRunner[T]{
+			add: q.add,
+			get: q.get,
+		}
+		go runner.run(done)
 
 		// SetFinalizer can only be called on the beginning of an
 		// allocated block. If a Queue value, not a pointer, is present as
@@ -81,7 +85,12 @@ func (q *Queue[T]) Pop() <-chan T {
 	return q.get
 }
 
-func (q Queue[T]) run(done <-chan struct{}) {
+type queueRunner[T any] struct {
+	add chan T
+	get chan T
+}
+
+func (q *queueRunner[T]) run(done <-chan struct{}) {
 	add := q.add
 	var get chan T
 
