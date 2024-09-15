@@ -1,6 +1,7 @@
 package xsync
 
 import (
+	"iter"
 	"runtime"
 	"sync"
 )
@@ -32,12 +33,14 @@ type Queue[T any] struct {
 
 	add chan T
 	get chan T
+	all chan iter.Seq[T]
 }
 
 func (q *Queue[T]) init() {
 	q.start.Do(func() {
 		q.add = make(chan T)
 		q.get = make(chan T)
+		q.all = make(chan iter.Seq[T])
 
 		done := make(chan struct{})
 		var stop sync.Once
@@ -47,6 +50,7 @@ func (q *Queue[T]) init() {
 		runner := queueRunner[T]{
 			add: q.add,
 			get: q.get,
+			all: q.all,
 		}
 		go runner.run(done)
 
@@ -85,17 +89,30 @@ func (q *Queue[T]) Pop() <-chan T {
 	return q.get
 }
 
+// All returns an iterator over all values currently in the queue. The
+// channel will block until there is at least one value in the queue.
+// Like the channel returned by [Pop], it will be closed when the
+// Queue is stopped. Receiving from the channel will empty the queue
+// of all current values.
+func (q *Queue[T]) All() <-chan iter.Seq[T] {
+	q.init()
+	return q.all
+}
+
 type queueRunner[T any] struct {
 	add chan T
 	get chan T
+	all chan iter.Seq[T]
 }
 
 func (q *queueRunner[T]) run(done <-chan struct{}) {
 	add := q.add
 	var get chan T
+	var all chan iter.Seq[T]
 
 	defer func() {
 		close(q.get)
+		close(q.all)
 		if add != nil {
 			// Ensure that future attempts to send to the queue will fail.
 			close(add)
@@ -116,6 +133,7 @@ func (q *queueRunner[T]) run(done <-chan struct{}) {
 
 			s.Enqueue(v)
 			get = q.get
+			all = q.all
 
 		case get <- s.Peek():
 			ok := s.Pop()
@@ -126,6 +144,11 @@ func (q *queueRunner[T]) run(done <-chan struct{}) {
 
 				get = nil
 			}
+
+		case all <- s.All():
+			s = list[T]{}
+			all = nil
+			get = nil
 		}
 	}
 }
@@ -163,6 +186,18 @@ func (ls *list[T]) Pop() bool {
 	}
 
 	return ls.head != nil
+}
+
+func (ls *list[T]) All() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		cur := ls.head
+		for cur != nil {
+			if !yield(cur.Val) {
+				return
+			}
+			cur = cur.next
+		}
+	}
 }
 
 type node[T any] struct {
