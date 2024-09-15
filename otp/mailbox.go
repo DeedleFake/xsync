@@ -54,9 +54,15 @@ func find[T any](mb *Mailbox, match func(T) bool) (v T, ok bool) {
 // Mailbox and returned. If there is no such message, Recv blocks
 // until such a message arrives.
 //
+// If match is nil, all messages will be considered to be matching.
+//
 // For a non-blocking variant that returns immediately whether or not
 // a matching message is present, see [TryRecv].
 func Recv[T any](mb *Mailbox, match func(T) bool) T {
+	if match == nil {
+		match = func(T) bool { return true }
+	}
+
 	mb.m.Lock()
 	defer mb.m.Unlock()
 
@@ -74,6 +80,10 @@ func Recv[T any](mb *Mailbox, match func(T) bool) T {
 // whether not a matching message is present in the Mailbox. If no
 // message matches, it returns false as the second return.
 func TryRecv[T any](mb *Mailbox, match func(T) bool) (msg T, ok bool) {
+	if match == nil {
+		match = func(T) bool { return true }
+	}
+
 	mb.m.Lock()
 	defer mb.m.Unlock()
 
@@ -86,6 +96,12 @@ type list[T any] struct {
 
 func (ls *list[T]) push(v T) {
 	n := node[T]{val: v, prev: ls.tail}
+	if ls.head == nil {
+		ls.head = &n
+		ls.tail = &n
+		return
+	}
+
 	ls.tail.next = &n
 	ls.tail = &n
 }
