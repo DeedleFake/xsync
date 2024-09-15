@@ -89,11 +89,12 @@ func (q *Queue[T]) Pop() <-chan T {
 	return q.get
 }
 
-// All returns an iterator over all values currently in the queue. The
-// channel will block until there is at least one value in the queue.
+// All returns an iterator over all values currently in the queue.
+// Receiving from the channel will empty the queue. The channel will
+// block until there is at least one value in the queue.
+//
 // Like the channel returned by [Pop], it will be closed when the
-// Queue is stopped. Receiving from the channel will empty the queue
-// of all current values.
+// Queue is stopped.
 func (q *Queue[T]) All() <-chan iter.Seq[T] {
 	q.init()
 	return q.all
