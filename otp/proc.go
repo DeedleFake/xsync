@@ -50,6 +50,11 @@ func (p *Proc) Mailbox() *Mailbox {
 	return &p.mb
 }
 
+// Send sends a message to the process's mailbox.
+func (p *Proc) Send(msg any) {
+	p.mb.Send(msg)
+}
+
 // Done returns a channel that will be closed once the process has
 // fully exited.
 func (p *Proc) Done() <-chan struct{} {
@@ -61,6 +66,12 @@ func (p *Proc) Done() <-chan struct{} {
 func (p *Proc) Wait() error {
 	<-p.done
 	return p.err
+}
+
+// Stop signals to the process that it should exit by canceling its
+// root context.
+func (p *Proc) Stop() {
+	p.cancel()
 }
 
 type selfKey struct{}
