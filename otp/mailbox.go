@@ -5,6 +5,12 @@ import (
 	"sync"
 )
 
+// Sender is an interface wrapping the Send method. Its primary
+// implementation is [Mailbox].
+type Sender interface {
+	Send(msg any)
+}
+
 // Mailbox is an OTP process mailbox. It works similarly to a channel
 // but is not tied to a specific type and features a dynamic buffer.
 // Sends to a mailbox are always asynchronous. A zero-value Mailbox is
@@ -28,6 +34,8 @@ func (mb *Mailbox) init() {
 // receives, they will check the new message to see if it is what
 // they're waiting for after this function returns.
 func (mb *Mailbox) Send(msg any) {
+	mb.init()
+
 	mb.m.Lock()
 	defer mb.m.Unlock()
 
@@ -59,6 +67,8 @@ func find[T any](mb *Mailbox, match func(T) bool) (v T, ok bool) {
 // For a non-blocking variant that returns immediately whether or not
 // a matching message is present, see [TryRecv].
 func Recv[T any](mb *Mailbox, match func(T) bool) T {
+	mb.init()
+
 	if match == nil {
 		match = func(T) bool { return true }
 	}
@@ -80,6 +90,8 @@ func Recv[T any](mb *Mailbox, match func(T) bool) T {
 // whether not a matching message is present in the Mailbox. If no
 // message matches, it returns false as the second return.
 func TryRecv[T any](mb *Mailbox, match func(T) bool) (msg T, ok bool) {
+	mb.init()
+
 	if match == nil {
 		match = func(T) bool { return true }
 	}
