@@ -29,10 +29,8 @@ func Go(f func(ctx context.Context) error) *Proc {
 	p.cancel = cancel
 
 	go func() {
-		defer p.notify()
+		defer p.close()
 		defer p.catch()
-		defer cancel()
-		defer close(p.done)
 
 		p.err = f(ctx)
 	}()
@@ -40,10 +38,14 @@ func Go(f func(ctx context.Context) error) *Proc {
 	return &p
 }
 
-func (p *Proc) notify() {
+func (p *Proc) close() {
+	defer p.cancel()
+	close(p.done)
+
 	for s := range p.mon.Range {
 		s.(Sender).Send(MonitoredProcessExited{Proc: p})
 	}
+	p.mon.Clear()
 }
 
 func (p *Proc) catch() {
