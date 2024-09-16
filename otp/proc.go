@@ -1,6 +1,9 @@
 package otp
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // Proc is an OTP process.
 type Proc struct {
@@ -8,6 +11,7 @@ type Proc struct {
 	done   chan struct{}
 	err    error
 	mb     Mailbox
+	mon    sync.Map
 }
 
 // Go runs f as an OTP process. The passed context will be canceled
@@ -25,17 +29,8 @@ func Go(f func(ctx context.Context) error) *Proc {
 	p.cancel = cancel
 
 	go func() {
-		defer func() {
-			switch err := recover().(type) {
-			case error:
-				p.err = err
-			case nil:
-				return
-			default:
-				panic(err)
-			}
-		}()
-
+		defer p.notify()
+		defer p.catch()
 		defer cancel()
 		defer close(p.done)
 
@@ -43,6 +38,23 @@ func Go(f func(ctx context.Context) error) *Proc {
 	}()
 
 	return &p
+}
+
+func (p *Proc) notify() {
+	for s := range p.mon.Range {
+		s.(Sender).Send(MonitoredProcessExited{Proc: p})
+	}
+}
+
+func (p *Proc) catch() {
+	switch err := recover().(type) {
+	case error:
+		p.err = err
+	case nil:
+		return
+	default:
+		panic(err)
+	}
 }
 
 // Mailbox returns the process's Mailbox.
@@ -74,6 +86,26 @@ func (p *Proc) Stop() {
 	p.cancel()
 }
 
+// Monitor registers s as monitoring p. When p exits, all monitoring
+// processes will be sent a [MonitoredProcessExited] message.
+//
+// If p has already exited when Monitor is called, the message will be
+// sent to s immediately.
+func (p *Proc) Monitor(s Sender) {
+	select {
+	case <-p.done:
+		s.Send(MonitoredProcessExited{Proc: p})
+	default:
+		p.mon.Store(s, struct{}{})
+	}
+}
+
+// Unmonitor unregisters s from monitoring p. If s is not monitoring
+// p, this function is a no-op.
+func (p *Proc) Unmonitor(s Sender) {
+	p.mon.Delete(s)
+}
+
 type selfKey struct{}
 
 // Self returns the current process from the context, or nil if there
@@ -81,4 +113,11 @@ type selfKey struct{}
 func Self(ctx context.Context) *Proc {
 	p, _ := ctx.Value(selfKey{}).(*Proc)
 	return p
+}
+
+// MonitoredProcessExited is a message sent to processes that are
+// monitoring another process when the monitored process exits. See
+// [Process.Monitor].
+type MonitoredProcessExited struct {
+	Proc *Proc
 }
