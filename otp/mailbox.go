@@ -1,8 +1,9 @@
 package otp
 
 import (
-	"iter"
 	"sync"
+
+	"deedles.dev/xsync/internal/list"
 )
 
 // Sender is an interface wrapping the Send method. Its primary
@@ -21,7 +22,7 @@ type Mailbox struct {
 	m sync.Mutex
 	c sync.Cond
 
-	queue list[any]
+	queue list.Double[any]
 }
 
 func (mb *Mailbox) init() {
@@ -39,15 +40,15 @@ func (mb *Mailbox) Send(msg any) {
 	mb.m.Lock()
 	defer mb.m.Unlock()
 
-	mb.queue.push(msg)
+	mb.queue.Push(msg)
 	mb.c.Broadcast()
 }
 
 func find[T any](mb *Mailbox, match func(T) bool) (v T, ok bool) {
-	for n := range mb.queue.nodes() {
-		v, ok := n.val.(T)
+	for n := range mb.queue.Nodes() {
+		v, ok := n.Val.(T)
 		if ok && match(v) {
-			mb.queue.remove(n)
+			mb.queue.Remove(n)
 			return v, true
 		}
 	}
@@ -100,57 +101,4 @@ func TryRecv[T any](mb *Mailbox, match func(T) bool) (msg T, ok bool) {
 	defer mb.m.Unlock()
 
 	return find(mb, match)
-}
-
-type list[T any] struct {
-	head, tail *node[T]
-}
-
-func (ls *list[T]) push(v T) {
-	n := node[T]{val: v, prev: ls.tail}
-	if ls.head == nil {
-		ls.head = &n
-		ls.tail = &n
-		return
-	}
-
-	ls.tail.next = &n
-	ls.tail = &n
-}
-
-func (ls *list[T]) remove(n *node[T]) {
-	if ls.head == ls.tail {
-		ls.head = nil
-		ls.tail = nil
-		return
-	}
-
-	switch n {
-	case ls.head:
-		ls.head = n.next
-		n.next.prev = nil
-	case ls.tail:
-		ls.tail = n.prev
-		n.prev.next = nil
-	default:
-		n.next.prev = n.prev
-		n.prev.next = n.next
-	}
-}
-
-func (ls list[T]) nodes() iter.Seq[*node[T]] {
-	return func(yield func(*node[T]) bool) {
-		cur := ls.head
-		for cur != nil {
-			if !yield(cur) {
-				return
-			}
-			cur = cur.next
-		}
-	}
-}
-
-type node[T any] struct {
-	val        T
-	prev, next *node[T]
 }
