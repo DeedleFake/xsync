@@ -2,10 +2,13 @@ package list
 
 import "iter"
 
+// Single is a singly-linked list that also contains a reference to
+// the last node for quick inserts and removals at the head and tail.
 type Single[T any] struct {
 	head, tail *SingleNode[T]
 }
 
+// Enqueue adds v as a new node at the tail of the list.
 func (ls *Single[T]) Enqueue(v T) {
 	n := ls.tail.insert()
 	n.Val = v
@@ -16,6 +19,8 @@ func (ls *Single[T]) Enqueue(v T) {
 	}
 }
 
+// Peek returns the value of the head node or the zero value if the
+// list is empty.
 func (ls *Single[T]) Peek() (v T) {
 	if ls.head == nil {
 		return v
@@ -23,6 +28,8 @@ func (ls *Single[T]) Peek() (v T) {
 	return ls.head.Val
 }
 
+// Pop removes the current head node from the list. It returns false
+// if the list was already empty.
 func (ls *Single[T]) Pop() bool {
 	if ls.head == nil {
 		return false
@@ -37,6 +44,7 @@ func (ls *Single[T]) Pop() bool {
 	return ls.head != nil
 }
 
+// All returns an iterator over the elements of the list.
 func (ls *Single[T]) All() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		cur := ls.head
@@ -49,6 +57,7 @@ func (ls *Single[T]) All() iter.Seq[T] {
 	}
 }
 
+// SingleNode is a node of a [Single].
 type SingleNode[T any] struct {
 	Val  T
 	next *SingleNode[T]
