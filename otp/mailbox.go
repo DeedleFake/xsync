@@ -59,7 +59,7 @@ func find[T any](mb *Mailbox, match func(T) bool) (v T, ok bool) {
 // Recv checks mb to see if any messages that have been sent to it are
 // matched by the given function. A message is considered to be a
 // match if it both can be type asserted to T and the match function
-// returns true. If there is such a message, it is removes from the
+// returns true. If there is such a message, it is removed from the
 // Mailbox and returned. If there is no such message, Recv blocks
 // until such a message arrives.
 //
@@ -87,9 +87,10 @@ func Recv[T any](mb *Mailbox, match func(T) bool) T {
 	}
 }
 
-// TryRecv is like [Recv] but doesn't block, returning immediately
-// whether not a matching message is present in the Mailbox. If no
-// message matches, it returns false as the second return.
+// TryRecv is like [Recv] but doesn't block, instead returning
+// immediately whether or not a matching message is present in the
+// Mailbox. If no message matches, it returns false as the second
+// return.
 func TryRecv[T any](mb *Mailbox, match func(T) bool) (msg T, ok bool) {
 	mb.init()
 
