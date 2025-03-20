@@ -22,6 +22,13 @@ func NewFuture[T any]() (f *Future[T], complete func(T)) {
 	}
 }
 
+// Go runs f concurrently, yielding its value via the returned [Future].
+func Go[T any](f func() T) *Future[T] {
+	future, complete := NewFuture[T]()
+	go func() { complete(f()) }()
+	return future
+}
+
 // Done returns a channel that is closed when the future completes.
 func (f *Future[T]) Done() <-chan struct{} {
 	return f.done

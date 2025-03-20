@@ -10,12 +10,13 @@ import "sync"
 type Stopper struct {
 	done  chan struct{}
 	start sync.Once
-	close sync.Once
+	stop  func()
 }
 
 func (s *Stopper) init() {
 	s.start.Do(func() {
 		s.done = make(chan struct{})
+		s.stop = sync.OnceFunc(func() { close(s.done) })
 	})
 }
 
@@ -23,13 +24,11 @@ func (s *Stopper) init() {
 // once.
 func (s *Stopper) Stop() {
 	s.init()
-	s.close.Do(func() {
-		close(s.done)
-	})
+	s.stop()
 }
 
 // Done returns a channel that is closed when the Stop method is
-// called.
+// called. The channel can already be closed when this method returns.
 func (s *Stopper) Done() <-chan struct{} {
 	s.init()
 	return s.done
