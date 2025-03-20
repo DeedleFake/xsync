@@ -31,7 +31,6 @@ import (
 type Queue[T any] struct {
 	start sync.Once
 	stop  func()
-	block *byte
 
 	add chan T
 	get chan T
@@ -45,9 +44,7 @@ func (q *Queue[T]) init() {
 		q.all = make(chan iter.Seq[T])
 
 		done := make(chan struct{})
-		var stop sync.Once
-		stopfunc := func() { stop.Do(func() { close(done) }) }
-		q.stop = stopfunc
+		q.stop = sync.OnceFunc(func() { close(done) })
 
 		runner := queueRunner[T]{
 			add: q.add,
@@ -56,16 +53,7 @@ func (q *Queue[T]) init() {
 		}
 		go runner.run(done)
 
-		// SetFinalizer can only be called on the beginning of an
-		// allocated block. If a Queue value, not a pointer, is present as
-		// a field inside of another struct or in an array or something,
-		// it won't be the beginning of the block. By tying the finalizer
-		// to a field in the Queue that is allocated separately here, it
-		// guarantees that it'll work. The field must be a type with a
-		// size because the runtime doesn't actually allocate zero-sized
-		// types, so this uses a byte instead of a struct{}.
-		q.block = new(byte)
-		runtime.SetFinalizer(q.block, func(*byte) { stopfunc() })
+		runtime.AddCleanup(q, func(stop func()) { stop() }, q.stop)
 	})
 }
 
