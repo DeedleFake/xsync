@@ -4,142 +4,92 @@ import (
 	"context"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"weak"
 )
 
+// Pub is a publisher in a PubSub system. It tracks subscriptions and
+// can broadcast values of type T to them.
 type Pub[T any] struct {
-	once sync.Once
-	stop func()
-
-	pub   chan T
-	sub   chan *Sub[T]
-	unsub chan uint64
+	once   sync.Once
+	subs   sync.Map
+	nextID uint64
 }
 
 func (p *Pub[T]) init() {
 	p.once.Do(func() {
-		done := make(chan struct{})
-		p.stop = sync.OnceFunc(func() { close(done) })
-
-		p.pub = make(chan T)
-		p.sub = make(chan *Sub[T])
-		p.unsub = make(chan uint64)
-
-		runner := pubRunner[T]{
-			done:  done,
-			pub:   p.pub,
-			sub:   p.sub,
-			unsub: p.unsub,
-		}
-		go runner.run()
-
-		runtime.AddCleanup(p, func(stop func()) { stop() }, p.stop)
+		runtime.AddCleanup(p, func(m *sync.Map) {
+			for _, w := range m.Range {
+				sub := w.(weak.Pointer[Sub[T]]).Value()
+				if sub != nil {
+					close(sub.recv)
+				}
+			}
+		}, &p.subs)
 	})
 }
 
-func (p *Pub[T]) Sub() <-chan *Sub[T] {
+// Sub returns a new subscription to p. See [Sub] for more
+// information.
+func (p *Pub[T]) Sub() *Sub[T] {
 	p.init()
-	return p.sub
-}
 
-type pubRunner[T any] struct {
-	done  chan struct{}
-	pub   chan T
-	sub   chan *Sub[T]
-	unsub chan uint64
-
-	subs map[uint64]weak.Pointer[Sub[T]]
-}
-
-func (p *pubRunner[T]) run() {
-	p.subs = make(map[uint64]weak.Pointer[Sub[T]])
-	next := p.next(0)
-
-	for {
-		select {
-		case <-p.done:
-			p.unsubAll()
-			return
-
-		case p.sub <- next:
-			p.subs[next.id] = weak.Make(next)
-			next = p.next(next.id + 1)
-
-		case id := <-p.unsub:
-			delete(p.subs, id)
-
-		case v := <-p.pub:
-			for id, w := range p.subs {
-				done := p.send(id, w, v)
-				if done {
-					p.unsubAll()
-					return
-				}
-			}
-		}
-	}
-}
-
-func (p *pubRunner[T]) unsubAll() {
-	for _, w := range p.subs {
-		sub := w.Value()
-		if sub == nil {
-			continue
-		}
-		close(sub.get)
-	}
-}
-
-func (p *pubRunner[T]) send(id uint64, w weak.Pointer[Sub[T]], v T) bool {
-	sub := w.Value()
-	if sub == nil {
-		delete(p.subs, id)
-		return true
-	}
-
-	for {
-		select {
-		case <-p.done:
-			return false
-
-		case unsubID := <-p.unsub:
-			delete(p.subs, unsubID)
-			if id == unsubID {
-				return true
-			}
-
-		case sub.get <- v:
-		}
-	}
-}
-
-func (p *pubRunner[T]) next(id uint64) *Sub[T] {
+	id := atomic.AddUint64(&p.nextID, 1)
+	recv := make(chan T)
 	sub := Sub[T]{
-		id:  id,
-		get: make(chan T),
+		recv: recv,
+		stop: sync.OnceFunc(func() {
+			p.subs.Delete(id)
+		}),
 	}
+	runtime.AddCleanup(&sub, func(stop func()) { stop() }, sub.stop)
 
-	runtime.AddCleanup(&sub, func(p *pubRunner[T]) {
-		select {
-		case <-p.done:
-		case p.unsub <- id:
-		}
-	}, p)
-
+	p.subs.Store(id, weak.Make(&sub))
 	return &sub
 }
 
+// Send publishes v to all of p's subscribers. If the context is
+// canceled before v is sent, the context's cause is returned.
+func (p *Pub[T]) Send(ctx context.Context, v T) error {
+	p.init()
+
+	for k, w := range p.subs.Range {
+		sub := w.(weak.Pointer[Sub[T]]).Value()
+		if sub == nil {
+			p.subs.Delete(k)
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		case sub.recv <- v:
+			continue
+		}
+	}
+
+	return nil
+}
+
+// Sub is a subscription to a [Pub]. A Sub must not be copied after
+// first use.
 type Sub[T any] struct {
 	_ noCopy
 
-	id  uint64
-	get chan T
+	stop func()
+	recv chan T
 }
 
-func (s *Sub[T]) Get() <-chan T {
-	return s.get
+// Recv returns a channel that yields values published by the
+// corresponding [Pub].
+//
+// Note that the returned channel is not closed when the Sub is
+// unsubscribed.
+func (s *Sub[T]) Recv() <-chan T {
+	return s.recv
 }
 
-func (s *Sub[T]) Stop(ctx context.Context) {
-	// TODO
+// Stop unsubscribes from the publisher.
+func (s *Sub[T]) Stop() {
+	s.stop()
 }
