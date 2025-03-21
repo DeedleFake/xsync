@@ -52,6 +52,8 @@ func (p *Pub[T]) Sub() *Sub[T] {
 
 // Send publishes v to all of p's subscribers. If the context is
 // canceled before v is sent, the context's cause is returned.
+//
+// Send does not return until all subscriptions have received.
 func (p *Pub[T]) Send(ctx context.Context, v T) error {
 	p.init()
 
