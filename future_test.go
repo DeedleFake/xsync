@@ -22,7 +22,7 @@ func TestFuture(t *testing.T) {
 }
 
 func BenchmarkFuture(b *testing.B) {
-	for range b.N {
+	for b.Loop() {
 		f, complete := xsync.NewFuture[int]()
 		complete(3)
 		f.Get()
