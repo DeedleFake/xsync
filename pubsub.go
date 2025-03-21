@@ -12,6 +12,10 @@ import (
 // can broadcast values of type T to them.
 //
 // A zero-value Pub is ready to use.
+//
+// As a safety measure, the receive channels of all associated Subs
+// will be closed when the Pub is freed. This behavior only exists as
+// a backup and should not be relied on.
 type Pub[T any] struct {
 	once   sync.Once
 	subs   sync.Map
@@ -93,7 +97,8 @@ func (s *Sub[T]) Recv() <-chan T {
 	return s.recv
 }
 
-// Stop unsubscribes from the publisher.
+// Stop unsubscribes from the publisher. It is safe to call multiple
+// times.
 func (s *Sub[T]) Stop() {
 	s.stop()
 }
