@@ -10,6 +10,8 @@ import (
 
 // Pub is a publisher in a PubSub system. It tracks subscriptions and
 // can broadcast values of type T to them.
+//
+// A zero-value Pub is ready to use.
 type Pub[T any] struct {
 	once   sync.Once
 	subs   sync.Map
